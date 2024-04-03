@@ -1,2 +1,2 @@
 # mini-compiler
-Compiler for a c-like language
+Compiler for a C-like language
