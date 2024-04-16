@@ -295,9 +295,10 @@ let decl =
   sp *> id >>| fun i -> { typ = t; id = i }
 
 let multi_decl =
-  fix (fun multi_decl ->
-      let multi = decl <* ws_a (char ',') >>= fun d -> decl in
-      multi <|> decl)
+  typ >>= fun t ->
+  sp *> sep_by (ws_a (char ',')) id >>| fun li ->
+  let pair_type id = { typ = t; id = id } in
+  List.map pair_type li
 
 let func =
   let params = char '(' *> ws_a (sep_by (ws_a (char ',')) decl) <* char ')' in
@@ -309,7 +310,14 @@ let func =
   sp *> id >>= fun i ->
   ws *> params >>= fun p ->
   ws *> char '{' *> both declarations body <* char '}' >>| fun (d, b) ->
-  { id = i; parameters = p; return_type = t; declarations = d; body = b }
+  {
+    id = i;
+    parameters = p;
+    return_type = t;
+    declarations = List.flatten d;
+    body = b;
+  }
+
 
 let funcs = sep_by ws func
 
@@ -317,10 +325,11 @@ let test =
   Angstrom.parse_string ~consume:Prefix funcs
     "fun void main(struct A a, bool b) {
          int i;
-         int j;
+         int j, k, boof;
+         bool tru, fals;
          a = 2 * 5 + 8 / 3;
          print hi;
-         return wow().b.c;
+         return wow(test).b.c;
          if (wow(1, 2, hi(another, bye))) {
              a.b.c.d = 50 || 20;
          } else {

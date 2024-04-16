@@ -5,6 +5,7 @@
         ocaml
         ocamlPackages.utop
         ocamlPackages.findlib
+        ocamlPackages.ocamlformat
         ocamlPackages.angstrom
     ];
 }
