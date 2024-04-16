@@ -1,7 +1,7 @@
 open Angstrom
 
 type id = string
-type typ = Int | Bool | Struct of id | Void
+type typ = Int | Bool | Struct of id | IntArray | Void
 type declaration = { typ : typ; id : id }
 type type_declaration = { id : id; fields : declaration list }
 
@@ -59,8 +59,8 @@ type func = {
 }
 
 type program = {
-  declarations : declaration list;
   types : type_declaration list;
+  declarations : declaration list;
   functions : func list;
 }
 
@@ -300,9 +300,10 @@ let multi_decl =
   let pair_type id = { typ = t; id = id } in
   List.map pair_type li
 
+let declarations = ws_a (many (multi_decl <* ws_a sc))
+
 let func =
   let params = char '(' *> ws_a (sep_by (ws_a (char ',')) decl) <* char ')' in
-  let declarations = ws_a (many (multi_decl <* ws_a sc)) in
   let body = ws_a (sep_by ws statement) in
   let void = string "void" *> return Void in
 
@@ -318,15 +319,35 @@ let func =
     body = b;
   }
 
+let type_decl = string "struct" *> sp *> id <* sp <* char '{' <* ws >>= fun i ->
+  declarations <* char '}' <* ws <* sc >>| fun d ->
+  {
+    id = i;
+    fields = List.flatten d
+  }
 
-let funcs = sep_by ws func
+let program =
+  ws *> sep_by ws type_decl >>= fun t ->
+  ws *> declarations >>= fun d ->
+  ws *> sep_by ws func <* ws >>| fun f ->
+  { types = t; declarations = List.flatten d; functions = f } 
+
 
 let test =
-  Angstrom.parse_string ~consume:Prefix funcs
-    "fun void main(struct A a, bool b) {
+  Angstrom.parse_string ~consume:All program "
+    struct hi {
+      int j;
+      int wow;
+    };
+
+    int b;
+    struct A b;
+
+    fun void main(struct A a, bool b) {
          int i;
          int j, k, boof;
          bool tru, fals;
+
          a = 2 * 5 + 8 / 3;
          print hi;
          return wow(test).b.c;
