@@ -113,7 +113,6 @@ module P = struct
     let is_alphanum c = is_alpha c || is_digit c
 end
 
-let robust_peek n = peek_string n <|> take 0
 let integer = take_while1 P.is_digit >>| int_of_string
 let ws = skip_while P.is_whitespace
 let sp = take_while1 P.is_whitespace
@@ -156,80 +155,116 @@ let expression = fix (fun expression ->
     in
 
     let rec dot_tail dot =
-        peek_char >>= function
-        | Some '.' -> a 1 *> id >>= fun i -> dot_tail (Dot {expression = dot; id = i})
-        | _ -> return dot
+        let more_dots =
+            char '.' *> id >>= fun i -> dot_tail (Dot {expression = dot; id = i})
+        in 
+
+        more_dots <|> return dot
     in
 
     let dot = factor >>= fun f -> dot_tail f in
 
     let unary = fix (fun unary ->
-        peek_char >>= function
-        | Some '!' -> a 1 *> unary >>| fun f -> Not f
-        | Some '-' -> a 1 *> unary >>| fun f -> Negative f
-        | _ -> dot)
+        let not = char '!' *> unary >>| fun u -> Not u in
+        let negative = char '-' *> unary >>| fun u -> Negative u in
+
+        not <|> negative <|> dot)
     in
 
     let rec term_tail term =
-        ws *> peek_char >>= function
-        | Some '*' -> a 1 *> ws *> unary >>= fun u -> term_tail (Mul (term, u))
-        | Some '/' -> a 1 *> ws *> unary >>= fun u -> term_tail (Div (term, u))
-        | _ -> return term
+        let mul =
+            ws *> char '*' *> ws *> unary >>= fun u ->
+            term_tail (Mul (term, u))
+        in
+        let div =
+            ws *> char '/' *> ws *> unary >>= fun u ->
+            term_tail (Div (term, u))
+        in
+
+        mul <|> div <|> return term
     in
 
     let term = unary >>= fun u -> term_tail u in
 
     let rec simple_tail simple =
-        ws *> peek_char >>= function
-        | Some '+' -> a 1 *> ws *> term >>= fun t -> simple_tail (Add (simple, t))
-        | Some '-' -> a 1 *> ws *> term >>= fun t -> simple_tail (Sub (simple, t))
-        | _ -> return simple
+        let add =
+            ws *> char '+' *> ws *> term >>= fun t ->
+            simple_tail (Add (simple, t))
+        in
+        let sub =
+            ws *> char '-' *> ws *> term >>= fun t ->
+            simple_tail (Sub (simple, t))
+        in
+
+        add <|> sub <|> return simple 
     in
 
     let simple = term >>= fun t -> simple_tail t in
 
     let rec rel_tail rel =
-        ws *> both (robust_peek 2) peek_char >>= function
-        | ">=", _ -> a 2 *> ws *> simple >>= fun s -> rel_tail (GreaterEq (rel, s))
-        | "<=", _ -> a 2 *> ws *> simple >>= fun s -> rel_tail (LessEq (rel, s))
-        | _, Some '>' -> a 1 *> ws *> simple >>= fun s -> rel_tail (Greater (rel, s))
-        | _, Some '<' -> a 1 *> ws *> simple >>= fun s -> rel_tail (Less (rel, s))
-        | _ -> return rel
+        let geq = ws *> string ">=" *> ws *> simple >>= fun s ->
+            rel_tail (GreaterEq (rel, s))
+        in
+        let leq = ws *> string ">=" *> ws *> simple >>= fun s ->
+            rel_tail (LessEq (rel, s))
+        in
+        let gt = ws *> char '>' *> ws *> simple >>= fun s ->
+            rel_tail (Greater (rel, s))
+        in
+        let lt = ws *> char '<' *> ws *> simple >>= fun s ->
+            rel_tail (Less (rel, s))
+        in
+
+        geq <|> leq <|> gt <|> lt <|> return rel
     in
 
     let rel = simple >>= fun s -> rel_tail s in
 
     let rec eqterm_tail eqterm =
-        ws *> robust_peek 2 >>= function
-        | "==" -> a 2 *> ws *> rel >>= fun r -> eqterm_tail (Eq (eqterm, r))
-        | "!=" -> a 2 *> ws *> rel >>= fun r -> eqterm_tail (NotEq (eqterm, r))
-        | _ -> return eqterm
+        let equal =
+            ws *> string "==" *> ws *> rel >>= fun r ->
+            eqterm_tail (Eq (eqterm, r))
+        in
+        let not_equal =
+            ws *> string "!=" *> ws *> rel >>= fun r ->
+            eqterm_tail (NotEq (eqterm, r))
+        in
+
+        equal <|> not_equal <|> return eqterm
     in
 
     let eqterm = rel >>= fun r -> eqterm_tail r in
 
     let rec bool_tail boolterm =
-        ws *> robust_peek 2 >>= function
-        | "&&" -> a 2 *> ws *> eqterm >>= fun e -> bool_tail (And (boolterm, e))
-        | _ -> return boolterm
+        let and_and =
+            ws *> string "&&" *> ws *> eqterm >>= fun e ->
+            bool_tail (And (boolterm, e))
+        in
+
+        and_and <|> return boolterm
     in
 
     let boolterm = eqterm >>= fun e -> bool_tail e in
 
     let rec expr_tail expression =
-        ws *> robust_peek 2 >>= function
-        | "||" -> a 2 *> ws *> boolterm >>= fun b -> expr_tail (Or (expression, b))
-        | _ -> return expression
+        let or_or =
+            ws *> string "||" *> ws *> boolterm >>= fun b ->
+            expr_tail (Or (expression, b))
+        in
+
+        or_or <|> return expression
     in
 
     boolterm >>= fun b -> expr_tail b)
 
 let lvalue =
     let rec lvalue_tail lvalue =
-        peek_char >>= function
-        | Some '.' -> a 1 *> id >>= fun i -> lvalue_tail {id = i; left = Some lvalue}
-        | _ -> return lvalue
+        let dots =
+            char '.' *> id >>= fun i -> lvalue_tail {id = i; left = Some lvalue}
+        in
+        dots <|> return lvalue
     in
+
     id >>= fun i -> lvalue_tail {id = i; left = None}
 
 let assign = 
@@ -237,7 +272,6 @@ let assign =
         string "read" *> return Read <|>
         (expression >>| fun e -> Expr e)
     in
-
     lvalue <* ws_a (char '=') >>= fun l ->
     source <* ws <* sc >>| fun s -> (Assignment {target = l; source = s})
     
@@ -249,7 +283,6 @@ let print = string "print" *> sp *> expression >>= fun e ->
 let ret =
     let void = return (Return None) in
     let non_void = expression >>| fun e -> Return (Some e) in
-
     string "return" *> ws_a (non_void <|> void) <* sc
 
 let delete = string "delete" *> ws_a expression <* sc >>| fun e -> Delete e
@@ -270,34 +303,69 @@ let statement = fix (fun statement ->
         (els <|> return None) >>| fun e ->
             Conditional {guard = g; thn = t; els = e}
     in
-
     let loop =
         guard "while" >>= fun g ->
         ws_a statement_list >>| fun b ->
-        Loop {guard = g; body = b}
+            Loop {guard = g; body = b}
     in
-
     let invocation = id >>= fun i ->
         char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')' <* sc >>| fun a ->
             InvocationS {id = i; arguments = a}
     in
-
     block <|> assign <|> print <|> conditional <|> loop <|> delete <|> ret <|> invocation)
 
-let test = Angstrom.parse_string ~consume:Prefix statement
-    "{
+let typ =
+    let int = string "int" *> return Int in
+    let bool = string "bool" *> return Bool in
+    let strukt = string "struct" *> sp *> id >>| fun i -> Struct i in
+    int <|> bool <|> strukt
+
+let decl = typ >>= fun t -> sp *> id >>| fun i -> {typ = t; id = i}
+
+let multi_decl = fix (fun multi_decl ->
+    let multi =
+        decl <* ws_a (char ',') >>= fun d -> decl
+    in
+    multi <|> decl)
+
+let func =
+    let params = char '(' *> ws_a (sep_by (ws_a (char ',')) decl) <* char ')' in
+    let declarations = ws_a (many (multi_decl <* ws_a sc)) in
+    let body = ws_a (sep_by ws statement) in
+    let void = string "void" *> return Void in
+
+    string "fun" *> sp *> (typ <|> void) >>= fun t ->
+    sp *> id >>= fun i ->
+    ws *> params >>= fun p ->
+    ws *> char '{' *> both declarations body <* char '}' >>| fun (d, b) ->
+        {
+            id = i;
+            parameters = p;
+            return_type = t;
+            declarations = d;
+            body = b;
+        }
+
+let funcs = sep_by ws func
+
+let test = Angstrom.parse_string ~consume:Prefix funcs
+    "fun void main(struct A a, bool b) {
+        int i;
+        int j;
+
         a = 2 * 5 + 8 / 3;
         print hi;
-        return a;
+        return wow().b.c;
         if (wow(1, 2, hi(another, bye))) {
             a.b.c.d = 50 || 20;
         } else {
             print b endl;
         }
 
-        while (!(a || b && c)) {
+        while (!(a || b && -c >= 5)) {
             print b endl;
             delete b;
             w(what(hi), hi);
         }
-    }"
+    }
+"
