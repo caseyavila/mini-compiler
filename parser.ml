@@ -108,7 +108,7 @@ let expression =
         let parens_exp = char '(' *> expression <* char ')' in
         let invoke_exp =
           id >>= fun i ->
-          char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')'
+          ws *> char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')'
           >>| fun a -> Invocation { id = i; arguments = a }
         in
 
@@ -169,7 +169,7 @@ let expression =
           rel_tail (GreaterEq (rel, s))
         in
         let leq =
-          ws *> string ">=" *> ws *> simple >>= fun s ->
+          ws *> string "<=" *> ws *> simple >>= fun s ->
           rel_tail (LessEq (rel, s))
         in
         let gt =
@@ -278,7 +278,7 @@ let statement =
 
       let invocation =
         id >>= fun i ->
-        char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')' <* sc
+        ws *> char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')' <* sc
         >>| fun a -> InvocationS { id = i; arguments = a }
       in
       block <|> assign <|> print <|> conditional <|> loop <|> delete <|> ret
@@ -307,9 +307,9 @@ let func =
   let body = ws_a (sep_by ws statement) in
   let void = string "void" *> return Void in
 
-  string "fun" *> sp *> (typ <|> void) >>= fun t ->
-  sp *> id >>= fun i ->
+  string "fun" *> sp *> id >>= fun i ->
   ws *> params >>= fun p ->
+  ws *> (typ <|> void) >>= fun t ->
   ws *> char '{' *> both declarations body <* char '}' >>| fun (d, b) ->
   {
     id = i;
@@ -335,30 +335,134 @@ let program =
 
 let test =
   Angstrom.parse_string ~consume:All program "
-    struct hi {
-      int j;
-      int wow;
-    };
+struct plate 
+{
+   int size;
+   struct plate plateUnder;
+};
 
-    int b;
-    struct A b;
+struct plate peg1;
+struct plate peg2;
+struct plate peg3;
+int numMoves;
 
-    fun void main(struct A a, bool b) {
-         int i;
-         int j, k, boof;
-         bool tru, fals;
+fun move(int from, int to) void 
+{
+   struct plate plateToMove;
+   
+   if (from == 1) {
+      plateToMove = peg1;
+      peg1 = peg1.plateUnder;
+   } 
+   else
+   {
+      if (from == 2) {
+         plateToMove = peg2;
+         peg2 = peg2.plateUnder;
+      }
+      else {
+         plateToMove = peg3;
+         peg3 = peg3.plateUnder;
+      }
+   }
+   
+   if (to == 1) {
+      plateToMove.plateUnder = peg1;
+      peg1 = plateToMove;
+   }
+   else 
+   {
+      if (to == 2) {
+         plateToMove.plateUnder = peg2;
+         peg2 = plateToMove;
+      }
+      else 
+      {
+         plateToMove.plateUnder = peg3;
+         peg3 = plateToMove;
+      }
+   }
 
-         a = 2 * 5 + 8 / 3;
-         print hi;
-         return wow(test).b.c;
-         if (wow(1, 2, hi(another, bye))) {
-             a.b.c.d = 50 || 20;
-         } else {
-             print b endl;
-         }
-         while (!(a || b && -c >= 5)) {
-             print b endl;
-             delete b;
-             w(what(hi), hi);
-         }
-    }"
+   numMoves = numMoves + 1;
+}
+
+fun hanoi(int n, int from, int to, int other) void
+{
+   if (n == 1) {
+      move(from, to);
+   } 
+   else 
+   {
+      hanoi(n - 1, from, other, to);
+      move(from, to);
+      hanoi(n - 1, other, to, from);
+   }
+}
+
+fun printPeg(struct plate peg) void
+{
+   struct plate aPlate;
+
+   aPlate = peg;
+
+   while (aPlate != null) 
+   {
+      print aPlate.size endl;
+      aPlate = aPlate.plateUnder;
+   }
+}
+
+fun main() int
+{
+   int count, numPlates;
+   struct plate aPlate;
+
+   peg1 = null;
+   peg2 = null;
+   peg3 = null;
+   numMoves = 0;
+
+   numPlates = read;
+
+   if (numPlates >= 1) 
+   {
+      count = numPlates;
+
+      while (count != 0) 
+      {
+         aPlate = new plate;
+         aPlate.size = count;
+         aPlate.plateUnder = peg1;
+         peg1 = aPlate;
+         count = count - 1;
+      }
+
+      print 1 endl;
+      printPeg(peg1);
+      print 2 endl;
+      printPeg(peg2);
+      print 3 endl;
+      printPeg(peg3);
+
+      hanoi(numPlates, 1, 3, 2);
+
+      print 1 endl;
+      printPeg(peg1);
+      print 2 endl;
+      printPeg(peg2);
+      print 3 endl;
+      printPeg(peg3);
+      
+      print numMoves endl;
+
+      while (peg3 != null) 
+      {
+         aPlate = peg3;
+         peg3 = peg3.plateUnder;
+         delete aPlate;
+      }
+   }
+
+   return 0;
+}
+"
