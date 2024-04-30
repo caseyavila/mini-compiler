@@ -1,13 +1,14 @@
 open Angstrom
 
 type id = string
-type typ = Int | Bool | Struct of id | IntArray | Void
+type typ = Int | Bool | Struct of id | Array | Void
 type declaration = { typ : typ; id : id }
 type type_declaration = { id : id; fields : declaration list }
 
 type expression =
   | Invocation of invocation
   | Dot of { expression : expression; id : id }
+  | Index of { left : expression; index : expression }
   | Negative of expression
   | Not of expression
   | Mul of binary
@@ -26,13 +27,18 @@ type expression =
   | Integer of int
   | True
   | False
-  | New of id
+  | NewStruct of id
+  | NewArray of int
   | Null
 
 and invocation = { id : id; arguments : expression list }
 and binary = expression * expression
 
-type lvalue = { id : id; left : lvalue option }
+type lvalue =
+  | IndexedLVal of { id : id; left : pre_index option; index : expression }
+  | LVal of pre_index
+and pre_index = { id : id ; left : pre_index option }
+
 type assignment_source = Expr of expression | Read
 
 type statement =
@@ -67,8 +73,8 @@ type program = {
 module P = struct
   let is_keyword = function
     | "while" | "if" | "null" | "print" | "endl" | "return" | "delete"
-    | "struct" | "void" | "number" | "true" | "false" | "new" | "read" ->
-        true
+    | "struct" | "void" | "number" | "true" | "false" | "new" | "read"
+    | "int_array" -> true
     | _ -> false
 
   let is_whitespace = function
@@ -95,11 +101,18 @@ let id =
   | true -> fail "Identifier with same name as keyword"
   | false -> return name
 
+let new_right =
+  let new_id = id >>| fun i -> NewStruct i in
+  let new_array = string "int_array[" *> integer <* char ']' >>|
+    fun i -> NewArray i in
+
+  new_array <|> new_id
+
 let id_expr = id >>| fun i -> Identifier i
 let integer_expr = integer >>| fun i -> Integer i
 let true_expr = string "true" *> return True
 let false_expr = string "false" *> return False
-let new_expr = string "new" *> sp *> id >>| fun i -> New i
+let new_expr = string "new" *> sp *> new_right
 let null_expr = string "null" *> return Null
 
 let expression =
@@ -127,12 +140,23 @@ let expression =
 
       let dot = factor >>= fun f -> dot_tail f in
 
+      let index_tail left =
+        let has_index =
+          char '[' *> expression <* char ']' >>| fun e ->
+          Index { left = left; index = e }
+        in
+
+        has_index <|> return left
+      in
+
+      let index = dot >>= index_tail in
+
       let unary =
         fix (fun unary ->
             let not = char '!' *> unary >>| fun u -> Not u in
             let negative = char '-' *> unary >>| fun u -> Negative u in
 
-            not <|> negative <|> dot)
+            not <|> negative <|> index)
       in
 
       let rec term_tail term =
@@ -146,7 +170,7 @@ let expression =
         mul <|> div <|> return term
       in
 
-      let term = unary >>= fun u -> term_tail u in
+      let term = unary >>= term_tail in
 
       let rec simple_tail simple =
         let add =
@@ -161,7 +185,7 @@ let expression =
         add <|> sub <|> return simple
       in
 
-      let simple = term >>= fun t -> simple_tail t in
+      let simple = term >>= simple_tail in
 
       let rec rel_tail rel =
         let geq =
@@ -183,7 +207,7 @@ let expression =
         geq <|> leq <|> gt <|> lt <|> return rel
       in
 
-      let rel = simple >>= fun s -> rel_tail s in
+      let rel = simple >>= rel_tail in
 
       let rec eqterm_tail eqterm =
         let equal =
@@ -198,7 +222,7 @@ let expression =
         equal <|> not_equal <|> return eqterm
       in
 
-      let eqterm = rel >>= fun r -> eqterm_tail r in
+      let eqterm = rel >>= eqterm_tail in
 
       let rec bool_tail boolterm =
         let and_and =
@@ -220,7 +244,7 @@ let expression =
         or_or <|> return expression
       in
 
-      boolterm >>= fun b -> expr_tail b)
+      boolterm >>= expr_tail)
 
 let lvalue =
   let rec lvalue_tail lvalue =
@@ -230,7 +254,15 @@ let lvalue =
     dots <|> return lvalue
   in
 
-  id >>= fun i -> lvalue_tail { id = i; left = None }
+  let pre_index =
+    id >>= fun i -> lvalue_tail { id = i; left = None; }
+  in
+
+  let index = char '[' *> expression <* char ']' in
+
+  pre_index >>= fun p ->
+  (index >>| fun e -> IndexedLVal { id = p.id; left = p.left; index = e })
+  <|> return (LVal { id = p.id; left = p.left })
 
 let assign =
   let source =
@@ -288,7 +320,8 @@ let typ =
   let int = string "int" *> return Int in
   let bool = string "bool" *> return Bool in
   let strukt = string "struct" *> sp *> id >>| fun i -> Struct i in
-  int <|> bool <|> strukt
+  let int_array = string "int_array" *> return Array in
+  int_array <|> bool <|> int <|> strukt
 
 let decl =
   typ >>= fun t ->
@@ -334,135 +367,4 @@ let program =
 
 
 let test =
-  Angstrom.parse_string ~consume:All program "
-struct plate 
-{
-   int size;
-   struct plate plateUnder;
-};
-
-struct plate peg1;
-struct plate peg2;
-struct plate peg3;
-int numMoves;
-
-fun move(int from, int to) void 
-{
-   struct plate plateToMove;
-   
-   if (from == 1) {
-      plateToMove = peg1;
-      peg1 = peg1.plateUnder;
-   } 
-   else
-   {
-      if (from == 2) {
-         plateToMove = peg2;
-         peg2 = peg2.plateUnder;
-      }
-      else {
-         plateToMove = peg3;
-         peg3 = peg3.plateUnder;
-      }
-   }
-   
-   if (to == 1) {
-      plateToMove.plateUnder = peg1;
-      peg1 = plateToMove;
-   }
-   else 
-   {
-      if (to == 2) {
-         plateToMove.plateUnder = peg2;
-         peg2 = plateToMove;
-      }
-      else 
-      {
-         plateToMove.plateUnder = peg3;
-         peg3 = plateToMove;
-      }
-   }
-
-   numMoves = numMoves + 1;
-}
-
-fun hanoi(int n, int from, int to, int other) void
-{
-   if (n == 1) {
-      move(from, to);
-   } 
-   else 
-   {
-      hanoi(n - 1, from, other, to);
-      move(from, to);
-      hanoi(n - 1, other, to, from);
-   }
-}
-
-fun printPeg(struct plate peg) void
-{
-   struct plate aPlate;
-
-   aPlate = peg;
-
-   while (aPlate != null) 
-   {
-      print aPlate.size endl;
-      aPlate = aPlate.plateUnder;
-   }
-}
-
-fun main() int
-{
-   int count, numPlates;
-   struct plate aPlate;
-
-   peg1 = null;
-   peg2 = null;
-   peg3 = null;
-   numMoves = 0;
-
-   numPlates = read;
-
-   if (numPlates >= 1) 
-   {
-      count = numPlates;
-
-      while (count != 0) 
-      {
-         aPlate = new plate;
-         aPlate.size = count;
-         aPlate.plateUnder = peg1;
-         peg1 = aPlate;
-         count = count - 1;
-      }
-
-      print 1 endl;
-      printPeg(peg1);
-      print 2 endl;
-      printPeg(peg2);
-      print 3 endl;
-      printPeg(peg3);
-
-      hanoi(numPlates, 1, 3, 2);
-
-      print 1 endl;
-      printPeg(peg1);
-      print 2 endl;
-      printPeg(peg2);
-      print 3 endl;
-      printPeg(peg3);
-      
-      print numMoves endl;
-
-      while (peg3 != null) 
-      {
-         aPlate = peg3;
-         peg3 = peg3.plateUnder;
-         delete aPlate;
-      }
-   }
-
-   return 0;
-}
-"
+  Angstrom.parse_string ~consume:All program " "
