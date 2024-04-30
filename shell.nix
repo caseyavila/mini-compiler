@@ -4,9 +4,11 @@
     nativeBuildInputs = with pkgs.buildPackages; [
         dune_3
         ocaml
+        ocamlPackages.ppx_deriving
         ocamlPackages.utop
         ocamlPackages.findlib
         ocamlPackages.ocamlformat
+        ocamlPackages.core
         ocamlPackages.angstrom
     ];
 }

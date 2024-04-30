@@ -1,3 +1,6 @@
 #use "topfind"
 #require "angstrom"
-#use "./parser.ml"
+#require "core"
+#require "ppx_deriving.std"
+
+#use "bin/parser.ml"

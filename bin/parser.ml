@@ -1,9 +1,10 @@
+open Core
 open Angstrom
 
-type id = string
-type typ = Int | Bool | Struct of id | Array | Void
-type declaration = { typ : typ; id : id }
-type type_declaration = { id : id; fields : declaration list }
+type id = string [@@deriving show]
+type typ = Int | Bool | Struct of id | Array | Void [@@deriving show]
+type declaration = { typ : typ; id : id } [@@deriving show]
+type type_declaration = { id : id; fields : declaration list } [@@deriving show]
 
 type expression =
   | Invocation of invocation
@@ -23,23 +24,26 @@ type expression =
   | LessEq of binary
   | And of binary
   | Or of binary
-  | Identifier of id
+  | Id of id
   | Integer of int
   | True
   | False
   | NewStruct of id
   | NewArray of int
   | Null
+[@@deriving show]
 
-and invocation = { id : id; arguments : expression list }
-and binary = expression * expression
+and invocation = { id : id; arguments : expression list } [@@deriving show]
+and binary = expression * expression [@@deriving show]
+
+type pre_index = { id : id; left : pre_index option } [@@deriving show]
 
 type lvalue =
   | IndexedLVal of { id : id; left : pre_index option; index : expression }
   | LVal of pre_index
-and pre_index = { id : id ; left : pre_index option }
+[@@deriving show]
 
-type assignment_source = Expr of expression | Read
+type assignment_source = Expr of expression | Read [@@deriving show]
 
 type statement =
   | Block of statement list
@@ -55,6 +59,7 @@ type statement =
   | Loop of { guard : expression; body : statement list }
   | Delete of expression
   | Return of expression option
+[@@deriving show]
 
 type func = {
   id : id;
@@ -63,18 +68,20 @@ type func = {
   declarations : declaration list;
   body : statement list;
 }
+[@@deriving show]
 
 type program = {
   types : type_declaration list;
   declarations : declaration list;
   functions : func list;
 }
+[@@deriving show]
 
 module P = struct
   let is_keyword = function
     | "while" | "if" | "null" | "print" | "endl" | "return" | "delete"
-    | "struct" | "void" | "number" | "true" | "false" | "new" | "read"
-    | "int_array" -> true
+    | "struct" | "void" | "true" | "false" | "new" | "read" | "int_array" ->
+        true
     | _ -> false
 
   let is_whitespace = function
@@ -89,7 +96,6 @@ end
 let integer = take_while1 P.is_digit >>| int_of_string
 let ws = skip_while P.is_whitespace
 let sp = take_while1 P.is_whitespace
-let a = advance
 let sc = char ';'
 let ws_a p = ws *> p <* ws
 
@@ -103,12 +109,13 @@ let id =
 
 let new_right =
   let new_id = id >>| fun i -> NewStruct i in
-  let new_array = string "int_array[" *> integer <* char ']' >>|
-    fun i -> NewArray i in
+  let new_array =
+    string "int_array[" *> integer <* char ']' >>| fun i -> NewArray i
+  in
 
   new_array <|> new_id
 
-let id_expr = id >>| fun i -> Identifier i
+let id_expr = id >>| fun i -> Id i
 let integer_expr = integer >>| fun i -> Integer i
 let true_expr = string "true" *> return True
 let false_expr = string "false" *> return False
@@ -118,10 +125,11 @@ let null_expr = string "null" *> return Null
 let expression =
   fix (fun expression ->
       let factor =
-        let parens_exp = char '(' *> expression <* char ')' in
+        let parens_exp = ws_a (char '(') *> expression <* ws_a (char ')') in
         let invoke_exp =
           id >>= fun i ->
-          ws *> char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')'
+          ws *> char '(' *> ws_a (sep_by (ws_a (char ',')) expression)
+          <* char ')'
           >>| fun a -> Invocation { id = i; arguments = a }
         in
 
@@ -143,7 +151,7 @@ let expression =
       let index_tail left =
         let has_index =
           char '[' *> expression <* char ']' >>| fun e ->
-          Index { left = left; index = e }
+          Index { left; index = e }
         in
 
         has_index <|> return left
@@ -254,15 +262,14 @@ let lvalue =
     dots <|> return lvalue
   in
 
-  let pre_index =
-    id >>= fun i -> lvalue_tail { id = i; left = None; }
-  in
+  let pre_index = id >>= fun i -> lvalue_tail { id = i; left = None } in
 
   let index = char '[' *> expression <* char ']' in
 
   pre_index >>= fun p ->
-  (index >>| fun e -> IndexedLVal { id = p.id; left = p.left; index = e })
-  <|> return (LVal { id = p.id; left = p.left })
+  index
+  >>| (fun e -> IndexedLVal { id = p.id; left = p.left; index = e })
+  <|> return (LVal p)
 
 let assign =
   let source =
@@ -310,7 +317,8 @@ let statement =
 
       let invocation =
         id >>= fun i ->
-        ws *> char '(' *> ws_a (sep_by (ws_a (char ',')) expression) <* char ')' <* sc
+        ws *> char '(' *> ws_a (sep_by (ws_a (char ',')) expression)
+        <* char ')' <* sc
         >>| fun a -> InvocationS { id = i; arguments = a }
       in
       block <|> assign <|> print <|> conditional <|> loop <|> delete <|> ret
@@ -330,8 +338,8 @@ let decl =
 let multi_decl =
   typ >>= fun t ->
   sp *> sep_by (ws_a (char ',')) id >>| fun li ->
-  let pair_type id = { typ = t; id = id } in
-  List.map pair_type li
+  let pair_type id = { typ = t; id } in
+  List.map ~f:pair_type li
 
 let declarations = ws_a (many (multi_decl <* ws_a sc))
 
@@ -348,23 +356,31 @@ let func =
     id = i;
     parameters = p;
     return_type = t;
-    declarations = List.flatten d;
+    declarations = List.concat d;
     body = b;
   }
 
-let type_decl = string "struct" *> sp *> id <* sp <* char '{' <* ws >>= fun i ->
+let type_decl =
+  string "struct" *> sp *> id <* ws <* char '{' <* ws >>= fun i ->
   declarations <* char '}' <* ws <* sc >>| fun d ->
-  {
-    id = i;
-    fields = List.flatten d
-  }
+  { id = i; fields = List.concat d }
 
 let program =
   ws *> sep_by ws type_decl >>= fun t ->
   ws *> declarations >>= fun d ->
   ws *> sep_by ws func <* ws >>| fun f ->
-  { types = t; declarations = List.flatten d; functions = f } 
+  { types = t; declarations = List.concat d; functions = f }
 
+(* Removes comments from lines *)
+let preprocess line =
+  let preprocessor = take_till (fun c -> phys_equal c '#') in
+  match Angstrom.parse_string ~consume:Prefix preprocessor line with
+  | Ok output -> output
+  | Error _ -> failwith "Preprocessor somehow failed."
 
-let test =
-  Angstrom.parse_string ~consume:All program " "
+let parse input =
+  match Angstrom.parse_string ~consume:All program input with
+  | Ok output -> output
+  | Error err ->
+      print_endline "Parsing error... good luck bro...";
+      failwith err

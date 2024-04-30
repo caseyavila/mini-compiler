@@ -1,0 +1,5 @@
+(executable
+ (public_name mini)
+ (name main)
+ (preprocess (pps ppx_deriving.show))
+ (libraries mini core angstrom))
