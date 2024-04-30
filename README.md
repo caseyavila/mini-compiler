@@ -1,2 +1,2 @@
-# mini-compiler
-Compiler for a C-like language
+# mini
+Compiler for a C-like language in OCaml
