@@ -110,7 +110,7 @@ let id =
 let new_right =
   let new_id = id >>| fun i -> NewStruct i in
   let new_array =
-    string "int_array[" *> integer <* char ']' >>| fun i -> NewArray i
+    string "int_array[" *> ws_a integer <* char ']' >>| fun i -> NewArray i
   in
 
   new_array <|> new_id
@@ -374,13 +374,20 @@ let program =
 (* Removes comments from lines *)
 let preprocess line =
   let preprocessor = take_till (fun c -> phys_equal c '#') in
-  match Angstrom.parse_string ~consume:Prefix preprocessor line with
+  match parse_string ~consume:Prefix preprocessor line with
   | Ok output -> output
-  | Error _ -> failwith "Preprocessor somehow failed."
+  | Error _ -> print_endline "Preprocessor somehow failed.";
+      exit 1
 
 let parse input =
-  match Angstrom.parse_string ~consume:All program input with
+  match parse_string ~consume:All program input with
   | Ok output -> output
   | Error err ->
       print_endline "Parsing error... good luck bro...";
-      failwith err
+      print_endline err;
+      exit 1
+
+let demo =
+  let lines = In_channel.read_lines "/home/casey/Projects/mini/test/hanoi_benchmark.mini" in
+  let processed = String.concat (List.map ~f:preprocess lines) in
+  parse processed

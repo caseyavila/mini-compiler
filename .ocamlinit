@@ -1,6 +1,3 @@
-#use "topfind"
-#require "angstrom"
-#require "core"
-#require "ppx_deriving.std"
-
-#use "bin/parser.ml"
+open Core;;
+open Mini.Parser;;
+open Mini.Typechecker;;

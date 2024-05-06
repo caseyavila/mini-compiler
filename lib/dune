@@ -1,2 +1,4 @@
 (library
- (name mini))
+ (name mini)
+ (preprocess (pps ppx_deriving.show))
+ (libraries core angstrom))

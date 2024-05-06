@@ -4,8 +4,8 @@
     nativeBuildInputs = with pkgs.buildPackages; [
         dune_3
         ocaml
-        ocamlPackages.ppx_deriving
         ocamlPackages.utop
+        ocamlPackages.ppx_deriving
         ocamlPackages.findlib
         ocamlPackages.ocamlformat
         ocamlPackages.core
