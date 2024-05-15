@@ -15,4 +15,4 @@ let () =
   let processed = String.concat (List.map ~f:Parser.preprocess lines) in
   let program = Parser.parse processed in
 
-  Typechecker.type_check program
+  Typechecker.check_program program

@@ -387,7 +387,7 @@ let parse input =
       print_endline err;
       exit 1
 
-let demo =
-  let lines = In_channel.read_lines "/home/casey/Projects/mini/test/hanoi_benchmark.mini" in
+let parse_file file =
+  let lines = In_channel.read_lines file in
   let processed = String.concat (List.map ~f:preprocess lines) in
   parse processed

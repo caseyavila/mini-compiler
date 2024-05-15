@@ -6,6 +6,7 @@
         ocaml
         ocamlPackages.utop
         ocamlPackages.ppx_deriving
+        ocamlPackages.ppx_inline_test
         ocamlPackages.findlib
         ocamlPackages.ocamlformat
         ocamlPackages.core
