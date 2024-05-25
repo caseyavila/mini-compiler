@@ -11,8 +11,8 @@ let () =
   if Array.length args <> 2 then usage args.(0);
 
   let filename = args.(1) in
-  let lines = In_channel.read_lines filename in
-  let processed = String.concat (List.map ~f:Parser.preprocess lines) in
-  let program = Parser.parse processed in
+  let program = Parser.parse_file filename in
+  let checked = Typechecker.check_program program in
 
-  Typechecker.check_program program
+  let _ = Cfg.cfg checked in
+  ()

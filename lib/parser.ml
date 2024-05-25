@@ -1,8 +1,8 @@
 open Core
 open Angstrom
 
-type id = string [@@deriving show]
-type typ = Int | Bool | Struct of id | Array | Void [@@deriving show]
+type id = string [@@deriving show, eq]
+type typ = Int | Bool | Struct of id | Array | NullT | Void [@@deriving show, eq]
 type declaration = { typ : typ; id : id } [@@deriving show]
 type type_declaration = { id : id; fields : declaration list } [@@deriving show]
 
@@ -120,7 +120,7 @@ let integer_expr = integer >>| fun i -> Integer i
 let true_expr = string "true" *> return True
 let false_expr = string "false" *> return False
 let new_expr = string "new" *> sp *> new_right
-let null_expr = string "null" *> return Null
+let null_expr = (string "null" <|> string "NULL") *> return Null
 
 let expression =
   fix (fun expression ->
@@ -209,7 +209,8 @@ let expression =
           rel_tail (Greater (rel, s))
         in
         let lt =
-          ws *> char '<' *> ws *> simple >>= fun s -> rel_tail (Less (rel, s))
+          ws *> char '<' *> ws *> simple >>= fun s ->
+          rel_tail (Less (rel, s))
         in
 
         geq <|> leq <|> gt <|> lt <|> return rel
@@ -379,8 +380,8 @@ let preprocess line =
   | Error _ -> print_endline "Preprocessor somehow failed.";
       exit 1
 
-let parse input =
-  match parse_string ~consume:All program input with
+let parse p input =
+  match parse_string ~consume:All p input with
   | Ok output -> output
   | Error err ->
       print_endline "Parsing error... good luck bro...";
@@ -390,4 +391,4 @@ let parse input =
 let parse_file file =
   let lines = In_channel.read_lines file in
   let processed = String.concat (List.map ~f:preprocess lines) in
-  parse processed
+  parse program processed
