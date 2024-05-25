@@ -1,6 +1,11 @@
 (include_subdirs qualified)
+
 (library
  (name test)
- (inline_tests (deps (glob_files mini/milestone2/benchmarks/hanoi_benchmark/hanoi_benchmark.mini)))
- (preprocess (pps ppx_deriving.show ppx_expect))
+ (inline_tests
+  (deps
+   (glob_files
+    mini/milestone2/benchmarks/hanoi_benchmark/hanoi_benchmark.mini)))
+ (preprocess
+  (pps ppx_deriving.show ppx_expect))
  (libraries mini core angstrom))

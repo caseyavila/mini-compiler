@@ -2,7 +2,10 @@ open Core
 open Angstrom
 
 type id = string [@@deriving show, eq]
-type typ = Int | Bool | Struct of id | Array | NullT | Void [@@deriving show, eq]
+
+type typ = Int | Bool | Struct of id | Array | NullT | Void
+[@@deriving show, eq]
+
 type declaration = { typ : typ; id : id } [@@deriving show]
 type type_declaration = { id : id; fields : declaration list } [@@deriving show]
 
@@ -39,8 +42,7 @@ and binary = expression * expression [@@deriving show]
 type pre_index = { id : id; left : pre_index option } [@@deriving show]
 
 type lvalue =
-  | IndexedLVal of { id : id; left : pre_index option; index : expression }
-  | LVal of pre_index
+  { id : id; left : pre_index option; index : expression option }
 [@@deriving show]
 
 type assignment_source = Expr of expression | Read [@@deriving show]
@@ -209,8 +211,7 @@ let expression =
           rel_tail (Greater (rel, s))
         in
         let lt =
-          ws *> char '<' *> ws *> simple >>= fun s ->
-          rel_tail (Less (rel, s))
+          ws *> char '<' *> ws *> simple >>= fun s -> rel_tail (Less (rel, s))
         in
 
         geq <|> leq <|> gt <|> lt <|> return rel
@@ -269,8 +270,8 @@ let lvalue =
 
   pre_index >>= fun p ->
   index
-  >>| (fun e -> IndexedLVal { id = p.id; left = p.left; index = e })
-  <|> return (LVal p)
+  >>| (fun e -> { id = p.id; left = p.left; index = Some e })
+  <|> return { id = p.id; left = p.left; index = None }
 
 let assign =
   let source =
@@ -377,7 +378,8 @@ let preprocess line =
   let preprocessor = take_till (fun c -> phys_equal c '#') in
   match parse_string ~consume:Prefix preprocessor line with
   | Ok output -> output
-  | Error _ -> print_endline "Preprocessor somehow failed.";
+  | Error _ ->
+      print_endline "Preprocessor somehow failed.";
       exit 1
 
 let parse p input =

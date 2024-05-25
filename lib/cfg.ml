@@ -1,22 +1,20 @@
-open !Core
+open Core
 open Parser
 
 type cfg_block =
-  | Basic of { statements : statement list; next : cfg_block ref } 
+  | Entry of { statements : statement list; next : cfg_block ref }
+  | Basic of { statements : statement list; next : cfg_block ref }
   | Conditional of {
-      statements: statement list;
+      statements : statement list;
       guard : expression;
       tru : cfg_block ref;
       fals : cfg_block ref;
-    } 
-  | Return of expression option
+    }
+  | Return
 [@@deriving show]
 
-let cfg _program =
-  let block = Basic {statements = []; next = ref (Return None)} in
-  (match block with
-  | Basic x -> x.next := block
-  | _ -> ());
+let func_to_block func =
+  Basic { statements = func.body; next = ref Return }
 
-  print_endline (show_cfg_block block)
-
+let cfg _typed_program =
+  ()
