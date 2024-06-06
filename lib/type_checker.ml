@@ -11,7 +11,10 @@ type top_tenv = {
   structs : (id, declaration list) Hashtbl.t; (* valid struct types *)
 }
 
-type typed_program = { top_tenv : top_tenv; funcs : (local_tenv * func) list }
+type typed_function = { local_tenv : local_tenv; func : func }
+type typed_program = { top_tenv : top_tenv; funcs : typed_function list }
+
+let show_typ typ = Sexp.to_string [%sexp (typ : typ)]
 
 let null_equal_typ a b =
   match (a, b) with
@@ -107,7 +110,7 @@ let rec check_expr expr tenv =
       | t -> failwith (sprintf "Cannot `!` a %s" (show_typ t)))
   | Eq (l, r) | NotEq (l, r) -> (
       match (check_expr l tenv, check_expr r tenv) with
-      | Int, Int | Struct _, NullT | NullT, Struct _ -> Bool
+      | Int, Int | Struct _, NullT -> Bool
       | Struct i1, Struct i2 when String.equal i1 i2 -> Bool
       | t1, t2 ->
           failwith
@@ -153,28 +156,31 @@ let check_lvalue (lvalue : lvalue) tenv =
   let rec check_pre_index (pre : pre_index) =
     match pre.left with
     | None -> check_expr (Id pre.id) tenv
-    | Some p -> (match check_pre_index p with
-      | Struct s -> (
-          let fields = Hashtbl.find_exn top_tenv.structs s in
-          match
-            List.find_map fields ~f:(fun f ->
-                if String.equal pre.id f.id then Some f.typ else None)
-          with
-          | Some x -> x
-          | None -> failwith (sprintf "No field `%s` in type %s" pre.id s))
-      | t ->
-          failwith
-            (sprintf "Dot operator on non-struct, found %s instead" (show_typ t))
-      )
+    | Some p -> (
+        match check_pre_index p with
+        | Struct s -> (
+            let fields = Hashtbl.find_exn top_tenv.structs s in
+            match
+              List.find_map fields ~f:(fun f ->
+                  if String.equal pre.id f.id then Some f.typ else None)
+            with
+            | Some x -> x
+            | None -> failwith (sprintf "No field `%s` in type %s" pre.id s))
+        | t ->
+            failwith
+              (sprintf "Dot operator on non-struct, found %s instead"
+                 (show_typ t)))
   in
 
   let pre = check_pre_index { left = lvalue.left; id = lvalue.id } in
 
   match lvalue.index with
   | Some i -> (
-      match pre, (check_expr i tenv) with
+      match (pre, check_expr i tenv) with
       | Array, Int -> Int
-      | t1, t2 -> failwith (sprintf "Cannot index %s with %s" (show_typ t1) (show_typ t2)))
+      | t1, t2 ->
+          failwith
+            (sprintf "Cannot index %s with %s" (show_typ t1) (show_typ t2)))
   | None -> pre
 
 let rec check_stmt stmt tenv ret_typ =
@@ -183,7 +189,6 @@ let rec check_stmt stmt tenv ret_typ =
     List.map ~f:(fun s -> check_stmt s tenv ret_typ) stmts
   in
   match stmt with
-  | Block b -> Block (check_stmts b)
   | Loop { guard = g; body = b } -> (
       match check_expr g tenv with
       | Bool -> Loop { guard = g; body = check_stmts b }
@@ -228,21 +233,22 @@ let rec check_stmt stmt tenv ret_typ =
       match (check_lvalue t tenv, s) with
       | Int, Read -> a
       | t, Expr s when null_equal_typ t (check_expr s tenv) -> a
-      | t, Read -> failwith (sprintf "`read` expects int, found %s instead" (show_typ t))
-      | t, Expr s -> failwith (sprintf "Can't assign type %s with %s" (show_typ t) (show_typ (check_expr s tenv)))
-  )
+      | t, Read ->
+          failwith (sprintf "`read` expects int, found %s instead" (show_typ t))
+      | t, Expr s ->
+          failwith
+            (sprintf "Can't assign type %s with %s" (show_typ t)
+               (show_typ (check_expr s tenv))))
 
 (* Make sure all paths return *)
 let check_returns functions =
-  let rec check_block_return block ret =
+  let rec check_block_return block =
     let check_stmt_return stmt =
-      match (stmt, ret) with
-      | _, Void -> true
-      | Conditional { guard = _; thn; els = None }, _ ->
-          check_block_return thn ret
-      | Conditional { guard = _; thn; els = Some els }, _ ->
-          check_block_return thn ret && check_block_return els ret
-      | Return _, _ -> true
+      match stmt with
+      | Conditional { guard = _; thn; els = None } -> check_block_return thn
+      | Conditional { guard = _; thn; els = Some els } ->
+          check_block_return thn && check_block_return els
+      | Return _ -> true
       | _ -> false
     in
 
@@ -251,8 +257,10 @@ let check_returns functions =
   in
 
   let check_func_return f =
-    if check_block_return f.body f.return_type then f
-    else failwith (sprintf "Function `%s` might not return" f.id)
+    match (check_block_return f.body, f.return_type) with
+    | true, _ -> f
+    | false, Void -> { f with body = f.body @ [Return None] }
+    | _ -> failwith (sprintf "Function `%s` might not return" f.id)
   in
 
   List.map ~f:check_func_return functions
@@ -295,14 +303,17 @@ let check_program program =
             body
         in
 
-        ( local_tenv,
-          {
-            id = func.id;
-            parameters = check_decls func.parameters;
-            return_type = check_type func.return_type;
-            declarations = check_decls func.declarations;
-            body = check_body func.body;
-          } )
+        {
+          local_tenv;
+          func =
+            {
+              id = func.id;
+              parameters = check_decls func.parameters;
+              return_type = check_type func.return_type;
+              declarations = check_decls func.declarations;
+              body = check_body func.body;
+            };
+        }
       with Failure f -> failwith (f ^ "\nin function: " ^ func.id)
     in
 

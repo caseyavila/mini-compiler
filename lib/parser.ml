@@ -1,13 +1,13 @@
 open Core
 open Angstrom
 
-type id = string [@@deriving show, eq]
+type id = string [@@deriving sexp, eq]
 
 type typ = Int | Bool | Struct of id | Array | NullT | Void
-[@@deriving show, eq]
+[@@deriving sexp, eq]
 
-type declaration = { typ : typ; id : id } [@@deriving show]
-type type_declaration = { id : id; fields : declaration list } [@@deriving show]
+type declaration = { typ : typ; id : id } [@@deriving sexp]
+type type_declaration = { id : id; fields : declaration list } [@@deriving sexp]
 
 type expression =
   | Invocation of invocation
@@ -34,21 +34,19 @@ type expression =
   | NewStruct of id
   | NewArray of int
   | Null
-[@@deriving show]
+[@@deriving sexp]
 
-and invocation = { id : id; arguments : expression list } [@@deriving show]
-and binary = expression * expression [@@deriving show]
+and invocation = { id : id; arguments : expression list } [@@deriving sexp]
+and binary = expression * expression [@@deriving sexp]
 
-type pre_index = { id : id; left : pre_index option } [@@deriving show]
+type pre_index = { id : id; left : pre_index option } [@@deriving sexp]
 
-type lvalue =
-  { id : id; left : pre_index option; index : expression option }
-[@@deriving show]
+type lvalue = { id : id; left : pre_index option; index : expression option }
+[@@deriving sexp]
 
-type assignment_source = Expr of expression | Read [@@deriving show]
+type assignment_source = Expr of expression | Read [@@deriving sexp]
 
 type statement =
-  | Block of statement list
   | InvocationS of invocation
   | Assignment of { target : lvalue; source : assignment_source }
   | Print of expression
@@ -61,7 +59,7 @@ type statement =
   | Loop of { guard : expression; body : statement list }
   | Delete of expression
   | Return of expression option
-[@@deriving show]
+[@@deriving sexp]
 
 type func = {
   id : id;
@@ -70,14 +68,14 @@ type func = {
   declarations : declaration list;
   body : statement list;
 }
-[@@deriving show]
+[@@deriving sexp]
 
 type program = {
   types : type_declaration list;
   declarations : declaration list;
   functions : func list;
 }
-[@@deriving show]
+[@@deriving sexp]
 
 module P = struct
   let is_keyword = function
@@ -296,8 +294,6 @@ let statement =
   fix (fun statement ->
       let statement_list = char '{' *> ws_a (sep_by ws statement) <* char '}' in
 
-      let block = statement_list >>| fun l -> Block l in
-
       let guard str =
         string str *> ws_a (char '(' *> ws_a expression <* char ')')
       in
@@ -323,7 +319,7 @@ let statement =
         <* char ')' <* sc
         >>| fun a -> InvocationS { id = i; arguments = a }
       in
-      block <|> assign <|> print <|> conditional <|> loop <|> delete <|> ret
+      assign <|> print <|> conditional <|> loop <|> delete <|> ret
       <|> invocation)
 
 let typ =

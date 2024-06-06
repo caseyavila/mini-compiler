@@ -1,1 +1,2 @@
-profile = ocamlformat
+profile = default
+space-around-lists=false

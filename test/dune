@@ -2,10 +2,7 @@
 
 (library
  (name test)
- (inline_tests
-  (deps
-   (glob_files
-    mini/milestone2/benchmarks/hanoi_benchmark/hanoi_benchmark.mini)))
+ (inline_tests)
  (preprocess
-  (pps ppx_deriving.show ppx_expect))
+  (pps ppx_expect ppx_jane))
  (libraries mini core angstrom))
