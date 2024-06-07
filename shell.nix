@@ -13,6 +13,7 @@
         ocamlPackages.findlib
         ocamlPackages.ocamlformat
         ocamlPackages.core
+        ocamlPackages.core_unix
         ocamlPackages.angstrom
     ];
 }

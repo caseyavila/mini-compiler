@@ -2,7 +2,7 @@
 
 (library
  (name test)
- (inline_tests)
+ (inline_tests (deps ../bin/main.exe ../lib/util.c (source_tree mini)))
  (preprocess
   (pps ppx_expect ppx_jane))
- (libraries mini core angstrom))
+ (libraries mini core core_unix.sys_unix angstrom))
