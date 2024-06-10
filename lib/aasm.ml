@@ -2,7 +2,13 @@ open Core
 open Parser
 open Cfg
 
-type aasm_opd = Imm of int | ImmB of bool | Var of int | Id of id | Null
+type aasm_opd =
+  | Imm of int
+  | ImmB of bool
+  | Var of int
+  | Id of id
+  | PhId of id * int
+  | Null
 [@@deriving sexp, eq]
 
 (* target * operand1 * operand2 *)
@@ -32,7 +38,7 @@ type aasm_ins =
   | Free of aasm_opd
   | Gep of aasm_opd * aasm_opd * [ `Str of id | `Arr of aasm_opd ]
   | Jmp of int
-  | Phi of [`Pre of id * int list]
+  | Phi of id * int list
 [@@deriving sexp]
 
 type block = int * aasm_ins list [@@deriving sexp]
@@ -197,6 +203,7 @@ let aasm_stmt stmt =
       failwith "aasm_stmt: shouldn't be seeing conditional and loop statements"
 
 let b = ref 0
+let firsts = ref 0
 
 let aasm_cfg (cfg : statement cfg_tree ref) =
   let rec aux acc vis cfg =
@@ -237,7 +244,9 @@ let aasm_cfg (cfg : statement cfg_tree ref) =
   in
 
   match aux [] [] cfg with
-  | (_, i) :: r, _, _ -> (-1, i) :: r
+  | (_, i) :: r, _, _ ->
+      decr firsts;
+      (!firsts, i) :: r
   | [], _, _ -> failwith "aasm_cfg: shouldn't be returning empty list"
 
 let stack_aasms cfgs =

@@ -2,13 +2,15 @@ open Core
 open Aasm
 
 type 'a block_map = 'a list Map.M(Int).t [@@deriving sexp]
+type 'a var_map = 'a list Map.M(String).t [@@deriving sexp]
+type test = string Map.M(Int).t [@@deriving sexp]
+type tesst = aasm_opd Map.M(String).t [@@deriving sexp]
 
 let add_multil map ~keys ~data =
   List.fold ~init:map ~f:(fun m k -> Map.add_multi ~key:k ~data m) keys
 
 let invert mo block_map =
-  Map.fold
-    ~init:(Map.empty mo)
+  Map.fold ~init:(Map.empty mo)
     ~f:(fun ~key ~data acc -> add_multil ~keys:data ~data:key acc)
     block_map
 
@@ -53,7 +55,7 @@ let add_phi aasm =
   let new_dom prev_dom =
     Map.mapi prev_dom ~f:(fun ~key ~data ->
         let _ = data in
-        if key = -1 then [-1]
+        if key < 0 then [key]
         else
           match Map.find preds key with
           | None -> [key]
@@ -91,7 +93,9 @@ let add_phi aasm =
 
   let init_vars = vars aasm in
 
-  let rec phis vars =
+
+  (*let rec phis vars =
+    print_s [%sexp (vars : int list)];
     List.fold vars
       ~init:(Set.empty (module Int))
       ~f:(fun a v ->
@@ -102,34 +106,109 @@ let add_phi aasm =
             |> Set.union (Set.of_list (module Int) l)
             |> Set.union (Set.of_list (module Int) (phis l)))
     |> Set.to_list
+  in*)
+
+  let rec phis vars =
+    (*print_s [%sexp (vars : int list)];*)
+    List.fold vars
+      ~init:[]
+      ~f:(fun a v ->
+        match Map.find dom_fronts v with
+        | None -> a
+        | Some l -> l @ phis l)
   in
 
+  let _temp = Map.map init_vars ~f:phis in
   let phi_vars = Map.map init_vars ~f:phis |> invert (module Int) in
 
-  let new_aasm = List.map aasm ~f:(fun (n, ins) ->
-    let phis = match Map.find phi_vars n with
-    | None -> []
-    | Some ids -> List.map ids ~f:(fun i -> Phi (`Pre (i, Map.find_exn preds n)))
-    in
-    (n, phis @ ins))
+  (*print_s [%sexp (temp : int var_map)];
+  print_s [%sexp (phi_vars : string block_map)];*)
+
+  let new_aasm =
+    List.map aasm ~f:(fun (n, ins) ->
+        let phis =
+          match Map.find phi_vars n with
+          | None -> []
+          | Some ids -> List.map ids ~f:(fun i -> Phi (i, Map.find_exn preds n))
+        in
+        (n, phis @ ins))
   in
 
-  print_s [%sexp (new_aasm : block list)];
+  (*print_s [%sexp (new_aasm : block list)];*)
+  (!curr, new_aasm)
 
-  new_aasm
-
-let simp_insns defs ins =
+let simp_insns n defs ins =
   let rec aux acc defs ins =
+    let w_id, opds = defs in
+    let mid id = match Map.find w_id id with Some op -> op | None -> Id id in
+    let mop op =
+      match op with
+      | Id id -> mid id
+      | Var v -> (
+          match Map.find opds v with None -> Var v | Some id -> mid id)
+      | _ -> op
+    in
+    let recur ni xs = aux (ni :: acc) defs xs in
     match ins with
-    | Load (op, (Id id)) :: xs -> aux acc ((id, op) :: defs) xs
-    | i :: xs -> aux (i :: acc) defs xs
-    | [] -> defs, List.rev acc
+    | [] -> (defs, List.rev acc)
+    | Load (Var v, Id id) :: xs ->
+        aux acc (w_id, Map.set opds ~key:v ~data:id) xs
+    | Load (op1, op2) :: xs -> recur (Load (mop op1, mop op2)) xs
+    | Str (op, Id id) :: xs ->
+        aux acc (Map.set w_id ~key:id ~data:(mop op), opds) xs
+    | Str (op1, op2) :: xs -> recur (Str (mop op1, mop op2)) xs
+    | Eq (t, l, r) :: xs -> recur (Eq (t, mop l, mop r)) xs
+    | Ne (t, l, r) :: xs -> recur (Ne (t, mop l, mop r)) xs
+    | Gt (t, l, r) :: xs -> recur (Gt (t, mop l, mop r)) xs
+    | Ge (t, l, r) :: xs -> recur (Ge (t, mop l, mop r)) xs
+    | Lt (t, l, r) :: xs -> recur (Lt (t, mop l, mop r)) xs
+    | Le (t, l, r) :: xs -> recur (Le (t, mop l, mop r)) xs
+    | Add (t, l, r) :: xs -> recur (Add (t, mop l, mop r)) xs
+    | Sub (t, l, r) :: xs -> recur (Sub (t, mop l, mop r)) xs
+    | Mul (t, l, r) :: xs -> recur (Mul (t, mop l, mop r)) xs
+    | Div (t, l, r) :: xs -> recur (Div (t, mop l, mop r)) xs
+    | And (t, l, r) :: xs -> recur (And (t, mop l, mop r)) xs
+    | Or (t, l, r) :: xs -> recur (Or (t, mop l, mop r)) xs
+    | Xor (t, l, r) :: xs -> recur (Xor (t, mop l, mop r)) xs
+    | Br (op, t, f) :: xs -> recur (Br (mop op, t, f)) xs
+    | Jmp n :: xs -> recur (Jmp n) xs
+    | Free op :: xs -> recur (Free (mop op)) xs
+    | Ret (Some op) :: xs -> recur (Ret (Some (mop op))) xs
+    | Ret None :: xs -> recur (Ret None) xs
+    | Gep (t, op, `Str id) :: xs -> recur (Gep (t, mop op, `Str id)) xs
+    | Gep (t, op, `Arr iop) :: xs -> recur (Gep (t, mop op, `Arr (mop iop))) xs
+    | Inv (t, id, a) :: xs -> recur (Inv (t, id, List.map ~f:mop a)) xs
+    | NewA (t, n) :: xs -> recur (NewA (t, n)) xs
+    | NewS (t, i) :: xs -> recur (NewS (t, i)) xs
+    | Phi (id, is) :: xs ->
+        aux
+          (Phi (id, is) :: acc)
+          (Map.set w_id ~key:id ~data:(PhId (id, n)), opds)
+          xs
   in
-  aux [] defs ins 
+  aux [] defs ins
 
-let simp_block block =
-  List.folding_map block ~f:(fun a (n, ins) -> n, simp_insns a ins)
+(* mmmm, some global, mutable state *)
+let block_defs = ref []
+
+let simp_blocks doms aasms =
+  let get_doms n = Map.find_exn doms n |> List.filter ~f:(( <> ) n) in
+  List.folding_map aasms
+    ~init:(Map.empty (module Int))
+    ~f:(fun a (n, ins) ->
+      let od, ov =
+        match List.last (get_doms n) with
+        | None -> (Map.empty (module String), Map.empty (module Int))
+        | Some b -> Map.find_exn a b
+      in
+      let (d, v), simped = simp_insns n (od, ov) ins in
+      block_defs := !block_defs @ [(n, d)];
+      (Map.set a ~key:n ~data:(d, v), (n, simped)))
 
 let ssa aasms =
   (*print_s [%sexp (simp_insns [] [] : (string * aasm_opd) list * aasm_ins list)];*)
-  List.map aasms ~f:(fun a -> a |> add_phi |> simp_block)
+  let doms, phis = List.map aasms ~f:add_phi |> List.unzip in
+  let blocks = List.map2_exn doms phis ~f:simp_blocks in
+
+  (*print_s [%sexp (defs : (tesst * test) list)];*)
+  blocks
