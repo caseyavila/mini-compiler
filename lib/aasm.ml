@@ -2,7 +2,7 @@ open Core
 open Parser
 open Cfg
 
-type aasm_opd = Imm of int | ImmB of bool | Var of int | Id of string | Null
+type aasm_opd = Imm of int | ImmB of bool | Var of int | Id of id | Null
 [@@deriving sexp, eq]
 
 (* target * operand1 * operand2 *)
@@ -30,8 +30,9 @@ type aasm_ins =
   | NewS of aasm_opd * id (* new struct *)
   | NewA of aasm_opd * int
   | Free of aasm_opd
-  | Gep of aasm_opd * aasm_opd * [`Str of id | `Arr of aasm_opd]
+  | Gep of aasm_opd * aasm_opd * [ `Str of id | `Arr of aasm_opd ]
   | Jmp of int
+  | Phi of [`Pre of id * int list]
 [@@deriving sexp]
 
 type block = int * aasm_ins list [@@deriving sexp]
@@ -130,7 +131,7 @@ let aasm_expr expr =
     | NewStruct id -> aasm_str id
     | NewArray i -> aasm_arr i
     | Dot { expression; id } -> aasm_dot expression id
-    | Index { left; index } -> aasm_idx left index 
+    | Index { left; index } -> aasm_idx left index
   in
 
   let ins, op = aux [] expr in
@@ -176,8 +177,9 @@ let aasm_stmt stmt =
             ([Inv (Some this, "readnum", [])], this)
       in
       let lins, lopd = aasm_pre_index { id; left } in
-      let iins, iopd = match index with
-        | None -> [], lopd
+      let iins, iopd =
+        match index with
+        | None -> ([], lopd)
         | Some e ->
             let ins, iopd = aasm_expr e in
             let load = Var !v in
@@ -234,8 +236,9 @@ let aasm_cfg (cfg : statement cfg_tree ref) =
         ((this, stmts) :: accf, vf, this)
   in
 
-  let block, _, _ = aux [] [] cfg in
-  block
+  match aux [] [] cfg with
+  | (_, i) :: r, _, _ -> (-1, i) :: r
+  | [], _, _ -> failwith "aasm_cfg: shouldn't be returning empty list"
 
 let stack_aasms cfgs =
   (*print_s [%sexp (cfgs : statement cfg_tree ref list)];*)

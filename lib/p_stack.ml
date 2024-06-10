@@ -143,9 +143,7 @@ let print_aasm_fun top_tenv blocks tfunc =
           (sty (check_aty opd))
     | NewA (opd, i) ->
         aty := (opd, Array) :: !aty;
-        printf "%s = call i8* @malloc(i64 %d)\n"
-          (sopd (pred_var opd))
-          (i * 8);
+        printf "%s = call i8* @malloc(i64 %d)\n" (sopd (pred_var opd)) (i * 8);
         printf "%s = bitcast i8* %s to %s\n" (sopd opd)
           (sopd (pred_var opd))
           (sty (check_aty opd))
@@ -165,14 +163,17 @@ let print_aasm_fun top_tenv blocks tfunc =
           (sopd opd) st_id st_id (sopd st_opd) n
     | Gep (opd, arropd, `Arr iopd) ->
         aty := (opd, Int) :: !aty;
-        printf "%s = getelementptr i64, i64* %s, %s %s\n"
-        (sopd opd) (sopd arropd) (sty (check_aty iopd)) (sopd iopd)
+        printf "%s = getelementptr i64, i64* %s, %s %s\n" (sopd opd)
+          (sopd arropd)
+          (sty (check_aty iopd))
+          (sopd iopd)
     | Ret (Some opd) -> printf "ret %s %s\n" (sty func.return_type) (sopd opd)
     | Ret None -> printf "ret void\n"
+    | Phi _ -> print_endline "phi"
   in
 
-  let print_block i (n, insns) =
-    if i > 0 then printf "L%d:\n" n else ();
+  let print_block (n, insns) =
+    if n <> -1 then printf "L%d:\n" n else ();
     List.iter ~f:print_insn insns
   in
 
@@ -185,7 +186,7 @@ let print_aasm_fun top_tenv blocks tfunc =
   printf "define %s @%s(%s) {\n" (sty func.return_type) func.id args;
   List.iter ~f:print_param func.parameters;
   List.iter ~f:print_decl func.declarations;
-  List.iteri ~f:print_block blocks;
+  List.iter ~f:print_block blocks;
   printf "}\n"
 
 let print_footer () =
@@ -207,8 +208,8 @@ let print_global ~key ~data =
   let vl = match data with Struct _ -> "null" | _ -> "0" in
   printf "@%s = common global %s %s, align 4\n" key (sty data) vl
 
-let print_stack aasms typed_program =
-  (*print_s [%sexp (aasms : (int * aasm_ins list) list list) ];*)
+let print_stack typed_program aasms =
+  (*print_s [%sexp (aasms : block list list) ];*)
   Hashtbl.iteri ~f:print_type typed_program.top_tenv.structs;
   Hashtbl.iteri ~f:print_global typed_program.top_tenv.vars;
   List.iter2_exn

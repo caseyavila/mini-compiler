@@ -15,5 +15,4 @@ let run_benchmark name =
   command_exn ("./a.out < " ^ input name ^ " > out");
   command_exn ("diff out " ^ output name)
 
-let () =
-  Sys_unix.readdir bench_dir |> Array.iter ~f:run_benchmark;
+let () = Sys_unix.readdir bench_dir |> Array.iter ~f:run_benchmark

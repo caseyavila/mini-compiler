@@ -14,6 +14,6 @@ let () =
   let program = Parser.parse_file filename in
   let typed_program = Type_checker.check_program program in
 
-  let aasms = typed_program |> Cfg.cfgs |> Aasm.stack_aasms in
-  let _ = P_stack.print_stack aasms typed_program in
+  let aasms = typed_program |> Cfg.cfgs |> Aasm.stack_aasms |> Ssa.ssa in
+  let _ = P_stack.print_stack typed_program aasms in
   ()
